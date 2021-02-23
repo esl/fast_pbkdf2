@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/esl/fast_pbkdf2/branch/main/graph/badge.svg)](https://codecov.io/gh/esl/fast_pbkdf2)
 [![Hex](http://img.shields.io/hexpm/v/fast_pbkdf2.svg)](https://hex.pm/packages/fast_pbkdf2)
 
-`fast_pbkdf2` is an Erlang implementation of the [PBKDF2][PBKDF2], where the algorithm is a carefully-optimised NIF that uses timeslicing and nif scheduling to respect the latency properties of the BEAM.
+`fast_pbkdf2` is an Erlang implementation of [PBKDF2][PBKDF2], where the algorithm is a carefully-optimised NIF that uses timeslicing and nif scheduling to respect the latency properties of the BEAM.
 
 ## Building
 `fast_pbkdf2` is a rebar3-compatible OTP application, that uses the [port_compiler](https://github.com/blt/port_compiler) for the C part of the code.
