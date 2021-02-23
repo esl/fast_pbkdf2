@@ -179,7 +179,7 @@ test_vector_sha256_4(_Config) ->
 
 test_vector_sha256_5(_Config) ->
     {P,S,It,DkLen,Result} = {<<"passwordPASSWORDpassword">>,<<"saltSALTsaltSALTsaltSALTsaltSALTsalt">>,4096,40,
-      base16:decode(<<"348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c4e2a1fb8dd53e1c635518c7dac47e9">>)},
+     base16:decode(<<"348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c4e2a1fb8dd53e1c635518c7dac47e9">>)},
     ?assertEqual(Result, fast_pbkdf2:pbkdf2(sha256, P, S, It, DkLen)).
 
 test_vector_sha256_6(_Config) ->
