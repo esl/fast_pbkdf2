@@ -20,9 +20,10 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
       - run: make rebar3
-      - run: make
+      - run: make deps
       - run: make test
       - run: make dialyzer
       - run: make codecov
+      - run: make gcov
       - run: pip install --user codecov
       - run: /home/runner/.local/bin/codecov
