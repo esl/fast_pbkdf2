@@ -23,7 +23,12 @@ jobs:
       - run: make deps
       - run: make test
       - run: make dialyzer
+        if: ${{ matrix.otp == '23.2' }}
       - run: make codecov
+        if: ${{ matrix.otp == '23.2' }}
       - run: make gcov
+        if: ${{ matrix.otp == '23.2' }}
       - run: pip install --user codecov
+        if: ${{ matrix.otp == '23.2' }}
       - run: /home/runner/.local/bin/codecov
+        if: ${{ matrix.otp == '23.2' }}
