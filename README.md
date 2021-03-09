@@ -5,6 +5,7 @@
 [![Hex](http://img.shields.io/hexpm/v/fast_pbkdf2.svg)](https://hex.pm/packages/fast_pbkdf2)
 
 `fast_pbkdf2` is an Erlang implementation of [PBKDF2][PBKDF2], where the algorithm is a carefully-optimised NIF that uses timeslicing and nif scheduling to respect the latency properties of the BEAM.
+All OTP versions from OTP18 have been tested manually and should work correctly, but on CI we support only from 21.3
 
 ## Building
 `fast_pbkdf2` is a rebar3-compatible OTP application, that uses the [port_compiler](https://github.com/blt/port_compiler) for the C part of the code.

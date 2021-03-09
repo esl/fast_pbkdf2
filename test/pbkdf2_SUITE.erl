@@ -16,8 +16,7 @@
          erlang_and_nif_are_equivalent_sha224/1,
          erlang_and_nif_are_equivalent_sha256/1,
          erlang_and_nif_are_equivalent_sha384/1,
-         erlang_and_nif_are_equivalent_sha512/1,
-         realtime_test/1
+         erlang_and_nif_are_equivalent_sha512/1
         ]).
 -export([
          test_vector_sha1_1/1,
@@ -40,8 +39,7 @@
 all() ->
     [
      {group, equivalents},
-     {group, test_vectors},
-     realtime_test
+     {group, test_vectors}
     ].
 
 groups() ->
@@ -186,19 +184,3 @@ test_vector_sha256_6(_Config) ->
     {P,S,It,DkLen,Result} = {<<"pass\0word">>, <<"sa\0lt">>, 4096, 16,
      base16:decode(<<"89b69d0516f829893c696226650a8687">>)},
     ?assertEqual(Result, fast_pbkdf2:pbkdf2(sha256, P, S, It, DkLen)).
-
-
--ifdef(STATISTICS).
-realtime_test(_Config) ->
-    % Allocate two large binaries
-    A = crypto:strong_rand_bytes(64),
-    B = crypto:strong_rand_bytes(64),
-    Fun = fun() ->
-                  fast_pbkdf2:pbkdf2(512, A, B, 10000)
-          end,
-    #{mean := AverageJitter} = stats_latency:realtime_latency_on_load(Fun, 20, 5000),
-    ?assert(AverageJitter < 50).
--else.
-realtime_test(_Config) ->
-    ok.
--endif.
