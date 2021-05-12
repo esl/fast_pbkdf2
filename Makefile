@@ -1,5 +1,10 @@
 .PHONY: rel deps test
 
+REBARVER = 3.13.2
+ifeq ($(OTPVER),24.0)
+	REBARVER = 3.15.1
+endif
+
 all: deps compile
 
 compile: rebar3
@@ -27,7 +32,7 @@ gcov: test-compile
 	gcov -o c_src fast_pbkdf2
 
 rebar3:
-	wget https://github.com/erlang/rebar3/releases/download/3.13.2/rebar3 &&\
+	wget https://github.com/erlang/rebar3/releases/download/${REBARVER}/rebar3 &&\
 	chmod u+x rebar3
 
 dialyzer: rebar3
