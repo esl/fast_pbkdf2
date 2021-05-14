@@ -1,6 +1,6 @@
 {application, fast_pbkdf2,
  [{description, "Erlang's best pbkdf2 implementation"},
-  {vsn, "1.0.0"},
+  {vsn, git},
   {registered, []},
   {applications,
    [kernel,
