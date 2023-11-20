@@ -15,6 +15,10 @@ jobs:
         os: ['ubuntu-22.04']
         otp: ['26.1', '25.3', '24.3']
         rebar3: ['3.22.1']
+        include:
+          - otp: '26.1'
+            rebar3: '3.22.1'
+            os: 'windows-2022'
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v3
@@ -32,6 +36,9 @@ jobs:
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+      - name: Enable Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1.12.1
+        if: ${{ matrix.os == 'windows-2022' }}
 
       - run: rebar3 as test get-deps
       - run: rebar3 as test compile
