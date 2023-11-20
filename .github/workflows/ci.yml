@@ -36,8 +36,15 @@ jobs:
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+
       - name: Enable Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1.12.1
+        if: ${{ matrix.os == 'windows-2022' }}
+      - name: Install openssl
+        shell: pwsh
+        run: |
+          choco install openssl
+          echo "OPENSSL_INSTALL_DIR=""C:\Program Files\OpenSSL""" >> $env:GITHUB_ENV
         if: ${{ matrix.os == 'windows-2022' }}
 
       - run: rebar3 as test get-deps
