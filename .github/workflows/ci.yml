@@ -36,8 +36,15 @@ jobs:
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+
       - name: Enable Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1.12.1
+        if: ${{ matrix.os == 'windows-2022' }}
+      - name: Install openssl
+        shell: cmd
+        run: |
+          choco install openssl
+          IF EXIST "c:\\Program Files\\OpenSSL-Win64" (move "c:\\Program Files\\OpenSSL-Win64" "c:\\OpenSSL-Win64") ELSE (move "c:\\Program Files\\OpenSSL" "c:\\OpenSSL-Win64")
         if: ${{ matrix.os == 'windows-2022' }}
 
       - run: rebar3 as test get-deps
