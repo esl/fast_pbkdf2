@@ -95,8 +95,10 @@ jobs:
       with:
         arch: s390x
         distro: ubuntu22.04
-        run: | 
-         apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y rebar3 gcc libssl-dev
+        install: |
+          apt-get update -y
+          DEBIAN_FRONTEND=noninteractive apt-get install -y rebar3 gcc libssl-dev
+        run: |
          echo "---rebar3 as test get-deps---"
          rebar3 as test get-deps
          echo "---rebar3 as test compile---"
