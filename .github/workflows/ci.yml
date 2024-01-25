@@ -99,9 +99,9 @@ jobs:
           apt-get update -y
           DEBIAN_FRONTEND=noninteractive apt-get install -y rebar3 gcc libssl-dev
         run: |
-         echo "---rebar3 as test get-deps---"
-         rebar3 as test get-deps
-         echo "---rebar3 as test compile---"
-         rebar3 as test compile
-         echo "---rebar3 as test ct---"
-         rebar3 as test ct
+          echo "---rebar3 as test get-deps---"
+          rebar3 as test get-deps
+          echo "---rebar3 as test compile---"
+          rebar3 as test compile
+          echo "---rebar3 as test ct---"
+          rebar3 as test ct
