@@ -82,3 +82,26 @@ jobs:
         run: |
           pip install --user codecov
           /home/runner/.local/bin/codecov
+
+  test-on-s390x:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup emulator
+      run: |
+        sudo docker run --rm --privileged tonistiigi/binfmt:qemu-v6.2.0
+    - name: Run build
+      uses: uraimo/run-on-arch-action@v2.6.0
+      with:
+        arch: s390x
+        distro: ubuntu22.04
+        install: |
+          apt-get update -y
+          DEBIAN_FRONTEND=noninteractive apt-get install -y rebar3 gcc libssl-dev
+        run: |
+          echo "---rebar3 as test get-deps---"
+          rebar3 as test get-deps
+          echo "---rebar3 as test compile---"
+          rebar3 as test compile
+          echo "---rebar3 as test ct---"
+          rebar3 as test ct
