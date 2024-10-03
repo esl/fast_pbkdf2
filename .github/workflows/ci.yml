@@ -12,19 +12,25 @@ jobs:
     name: OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
     strategy:
       matrix:
-        os: ['ubuntu-22.04']
-        otp: ['26.1', '25.3', '24.3']
-        rebar3: ['3.22.1']
+        os: ['ubuntu-24.04']
+        otp: ['27', '26', '25']
+        rebar3: ['3.24.0']
         include:
-          - otp: '26.1'
+          - otp: '23'
+            rebar3: '3.20.0'
+            os: 'ubuntu-20.04'
+          - otp: '24'
             rebar3: '3.22.1'
+            os: 'ubuntu-22.04'
+          - otp: '27'
+            rebar3: '3.24.0'
             os: 'windows-2022'
-          - otp: '26.1'
-            rebar3: '3.22.1'
+          - otp: '27'
+            rebar3: '3.24.0'
             os: 'macos-latest'
     runs-on: ${{matrix.os}}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # OS setups
       - name: Ubuntu/Windows – Prepare Erlang
@@ -56,12 +62,12 @@ jobs:
 
       # caches
       - name: Restore _build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build
           key: _build-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
       - name: Restore rebar3's cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
@@ -71,27 +77,27 @@ jobs:
       - run: rebar3 as test compile
       - run: rebar3 as test ct
       - run: rebar3 dialyzer
-        if: ${{ matrix.otp == '26.1' && matrix.os == 'ubuntu-22.04' }}
+        if: ${{ matrix.otp == '27' && matrix.os == 'ubuntu-24.04' }}
       - name: Run coverage
-        if: ${{ matrix.otp == '26.1' && matrix.os == 'ubuntu-22.04' }}
+        if: ${{ matrix.otp == '27' && matrix.os == 'ubuntu-24.04' }}
         run: |
           rebar3 as test codecov analyze
           gcov -o c_src fast_pbkdf2
-      - name: Upload coverage
-        if: ${{ matrix.otp == '26.1' && matrix.os == 'ubuntu-22.04' }}
-        run: |
-          pip install --user codecov
-          /home/runner/.local/bin/codecov
+      - name: Upload coverage reports to Codecov
+        if: ${{ matrix.otp == '27' && matrix.os == 'ubuntu-24.04' }}
+        uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-on-s390x:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup emulator
       run: |
         sudo docker run --rm --privileged tonistiigi/binfmt:qemu-v6.2.0
     - name: Run build
-      uses: uraimo/run-on-arch-action@v2.6.0
+      uses: uraimo/run-on-arch-action@v2.7.2
       with:
         arch: s390x
         distro: ubuntu22.04

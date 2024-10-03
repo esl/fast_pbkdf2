@@ -6,16 +6,14 @@
 -export([pbkdf2/4, pbkdf2/5]).
 
 %%% @doc
-%%% This function calculates the pbkdf2 algorithm where dkLen is simply assumed to be that of the
-%%% underlying hash function, a sane default.
-%%% @end
+%%% This function calculates the pbkdf2 algorithm where dkLen is simply assumed to be that
+%%% of the underlying hash function, a sane default.
 -spec pbkdf2(sha_type(), binary(), binary(), non_neg_integer()) -> binary().
 pbkdf2(Hash, Password, Salt, IterationCount) ->
     pbkdf2_block(Hash, Password, Salt, IterationCount, 1).
 
 %%% @doc
 %%% This function allows to customise the desired dkLen parameter for pbkdf2.
-%%% @end
 -spec pbkdf2(sha_type(), binary(), binary(), non_neg_integer(), non_neg_integer()) -> binary().
 pbkdf2(Hash, Password, Salt, IterationCount, DkLen) ->
     pbkdf2(Hash, Password, Salt, IterationCount, DkLen, 1, [], 0).
