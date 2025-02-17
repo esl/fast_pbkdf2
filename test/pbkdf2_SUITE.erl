@@ -116,9 +116,13 @@ erlang_and_nif_are_equivalent_sha512(_Config) ->
 erlang_and_nif_are_equivalent_(Sha) ->
     Prop = ?FORALL({Pass, Salt, Count},
                    {binary(), binary(), range(2,20000)},
-                   fast_pbkdf2:pbkdf2(Sha, Pass, Salt, Count)
-                       =:= erl_pbkdf2:pbkdf2_oneblock(Sha, Pass, Salt, Count)
-                  ),
+                   begin
+                       #{size := KeyLen} = crypto:hash_info(Sha),
+                       This = fast_pbkdf2:pbkdf2(Sha, Pass, Salt, Count),
+                       PureErl = erl_pbkdf2:pbkdf2_oneblock(Sha, Pass, Salt, Count),
+                       LibCrypto = crypto:pbkdf2_hmac(Sha, Pass, Salt, Count, KeyLen),
+                       This =:= PureErl andalso This =:= LibCrypto
+                   end),
     Opts = [verbose, long_result,
             {start_size, 2}, {max_size, 128},
             {numtests, 500}, {numworkers, erlang:system_info(schedulers_online)}],
