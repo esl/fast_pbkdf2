@@ -16,9 +16,6 @@ jobs:
         otp: ['27', '26', '25']
         rebar3: ['3.24.0']
         include:
-          - otp: '23'
-            rebar3: '3.20.0'
-            os: 'ubuntu-20.04'
           - otp: '24'
             rebar3: '3.22.1'
             os: 'ubuntu-22.04'
@@ -40,7 +37,7 @@ jobs:
           rebar3-version: ${{matrix.rebar3}}
         if: ${{ matrix.os != 'macos-latest' }}
       - name: Windows - Enable Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1.12.1
+        uses: ilammy/msvc-dev-cmd@v1
         if: ${{ matrix.os == 'windows-2022' }}
       - name: Windows - Install openssl
         shell: pwsh
