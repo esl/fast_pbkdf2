@@ -1,5 +1,6 @@
 -module(fast_pbkdf2).
 -on_load(load/0).
+-nifs([pbkdf2_block/5]).
 
 -type sha_type() :: crypto:sha1() | crypto:sha2().
 
