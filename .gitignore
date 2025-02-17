@@ -3,6 +3,8 @@ _*
 .eunit
 *.o
 *.d
+*.gcda
+*.gcno
 *.beam
 *.plt
 *.swp
