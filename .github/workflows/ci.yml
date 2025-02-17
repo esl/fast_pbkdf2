@@ -11,14 +11,12 @@ jobs:
   test:
     name: OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
     strategy:
+      fail-fast: false
       matrix:
         os: ['ubuntu-24.04']
         otp: ['27', '26', '25']
         rebar3: ['3.24.0']
         include:
-          - otp: '23'
-            rebar3: '3.20.0'
-            os: 'ubuntu-20.04'
           - otp: '24'
             rebar3: '3.22.1'
             os: 'ubuntu-22.04'
@@ -40,7 +38,7 @@ jobs:
           rebar3-version: ${{matrix.rebar3}}
         if: ${{ matrix.os != 'macos-latest' }}
       - name: Windows - Enable Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1.12.1
+        uses: ilammy/msvc-dev-cmd@v1
         if: ${{ matrix.os == 'windows-2022' }}
       - name: Windows - Install openssl
         shell: pwsh
@@ -90,17 +88,17 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-on-s390x:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
     - name: Setup emulator
       run: |
-        sudo docker run --rm --privileged tonistiigi/binfmt:qemu-v6.2.0
+        sudo docker run --rm --privileged tonistiigi/binfmt:qemu-v9.2.0
     - name: Run build
-      uses: uraimo/run-on-arch-action@v2.7.2
+      uses: uraimo/run-on-arch-action@v2.8.1
       with:
         arch: s390x
-        distro: ubuntu22.04
+        distro: ubuntu_latest
         install: |
           apt-get update -y
           DEBIAN_FRONTEND=noninteractive apt-get install -y rebar3 gcc libssl-dev

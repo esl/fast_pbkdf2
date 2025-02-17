@@ -32,7 +32,6 @@
          test_vector_sha256_6/1
         ]).
 
--include_lib("common_test/include/ct.hrl").
 -include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
@@ -117,13 +116,17 @@ erlang_and_nif_are_equivalent_sha512(_Config) ->
 erlang_and_nif_are_equivalent_(Sha) ->
     Prop = ?FORALL({Pass, Salt, Count},
                    {binary(), binary(), range(2,20000)},
-                   fast_pbkdf2:pbkdf2(Sha, Pass, Salt, Count)
-                       =:= erl_pbkdf2:pbkdf2_oneblock(Sha, Pass, Salt, Count)
-                  ),
-    ?assert(proper:quickcheck(Prop, [verbose, long_result,
-                                     {numtests, 100},
-                                     {start_size, 2},
-                                     {max_size, 64}])).
+                   begin
+                       #{size := KeyLen} = crypto:hash_info(Sha),
+                       This = fast_pbkdf2:pbkdf2(Sha, Pass, Salt, Count),
+                       PureErl = erl_pbkdf2:pbkdf2_oneblock(Sha, Pass, Salt, Count),
+                       LibCrypto = crypto:pbkdf2_hmac(Sha, Pass, Salt, Count, KeyLen),
+                       This =:= PureErl andalso This =:= LibCrypto
+                   end),
+    Opts = [verbose, long_result,
+            {start_size, 2}, {max_size, 128},
+            {numtests, 500}, {numworkers, erlang:system_info(schedulers_online)}],
+    ?assert(proper:quickcheck(Prop, Opts)).
 
 
 %% Taken from the official RFC https://www.ietf.org/rfc/rfc6070.txt
