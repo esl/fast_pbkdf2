@@ -2,7 +2,9 @@
 -on_load(load/0).
 -nifs([pbkdf2_block/5]).
 
--type sha_type() :: crypto:sha1() | crypto:sha2().
+%% Taken from unexported crypto:sha3().
+-type sha3() :: sha3_224 | sha3_256 | sha3_384 | sha3_512.
+-type sha_type() :: crypto:sha1() | crypto:sha2() | sha3().
 
 -export([pbkdf2/4, pbkdf2/5]).
 

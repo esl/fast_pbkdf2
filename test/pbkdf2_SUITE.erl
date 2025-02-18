@@ -16,7 +16,11 @@
          erlang_and_nif_are_equivalent_sha224/1,
          erlang_and_nif_are_equivalent_sha256/1,
          erlang_and_nif_are_equivalent_sha384/1,
-         erlang_and_nif_are_equivalent_sha512/1
+         erlang_and_nif_are_equivalent_sha512/1,
+         erlang_and_nif_are_equivalent_sha3_224/1,
+         erlang_and_nif_are_equivalent_sha3_256/1,
+         erlang_and_nif_are_equivalent_sha3_384/1,
+         erlang_and_nif_are_equivalent_sha3_512/1
         ]).
 -export([
          test_vector_sha1_1/1,
@@ -49,7 +53,11 @@ groups() ->
        erlang_and_nif_are_equivalent_sha224,
        erlang_and_nif_are_equivalent_sha256,
        erlang_and_nif_are_equivalent_sha384,
-       erlang_and_nif_are_equivalent_sha512
+       erlang_and_nif_are_equivalent_sha512,
+       erlang_and_nif_are_equivalent_sha3_224,
+       erlang_and_nif_are_equivalent_sha3_256,
+       erlang_and_nif_are_equivalent_sha3_384,
+       erlang_and_nif_are_equivalent_sha3_512
       ]},
      {test_vectors, [parallel],
       [
@@ -99,21 +107,33 @@ end_per_testcase(_TestCase, _Config) ->
 %%%===================================================================
 
 erlang_and_nif_are_equivalent_sha1(_Config) ->
-    erlang_and_nif_are_equivalent_(sha).
+    crypto_and_erlang_and_nif_are_equivalent_(sha).
 
 erlang_and_nif_are_equivalent_sha224(_Config) ->
-    erlang_and_nif_are_equivalent_(sha224).
+    crypto_and_erlang_and_nif_are_equivalent_(sha224).
 
 erlang_and_nif_are_equivalent_sha256(_Config) ->
-    erlang_and_nif_are_equivalent_(sha256).
+    crypto_and_erlang_and_nif_are_equivalent_(sha256).
 
 erlang_and_nif_are_equivalent_sha384(_Config) ->
-    erlang_and_nif_are_equivalent_(sha384).
+    crypto_and_erlang_and_nif_are_equivalent_(sha384).
 
 erlang_and_nif_are_equivalent_sha512(_Config) ->
-    erlang_and_nif_are_equivalent_(sha512).
+    crypto_and_erlang_and_nif_are_equivalent_(sha512).
 
-erlang_and_nif_are_equivalent_(Sha) ->
+erlang_and_nif_are_equivalent_sha3_224(_Config) ->
+    erlang_and_nif_are_equivalent_(sha3_224).
+
+erlang_and_nif_are_equivalent_sha3_256(_Config) ->
+    erlang_and_nif_are_equivalent_(sha3_256).
+
+erlang_and_nif_are_equivalent_sha3_384(_Config) ->
+    erlang_and_nif_are_equivalent_(sha3_384).
+
+erlang_and_nif_are_equivalent_sha3_512(_Config) ->
+    erlang_and_nif_are_equivalent_(sha3_512).
+
+crypto_and_erlang_and_nif_are_equivalent_(Sha) ->
     Prop = ?FORALL({Pass, Salt, Count},
                    {binary(), binary(), range(2,20000)},
                    begin
@@ -122,6 +142,19 @@ erlang_and_nif_are_equivalent_(Sha) ->
                        PureErl = erl_pbkdf2:pbkdf2_oneblock(Sha, Pass, Salt, Count),
                        LibCrypto = crypto:pbkdf2_hmac(Sha, Pass, Salt, Count, KeyLen),
                        This =:= PureErl andalso This =:= LibCrypto
+                   end),
+    Opts = [verbose, long_result,
+            {start_size, 2}, {max_size, 128},
+            {numtests, 500}, {numworkers, erlang:system_info(schedulers_online)}],
+    ?assert(proper:quickcheck(Prop, Opts)).
+
+erlang_and_nif_are_equivalent_(Sha) ->
+    Prop = ?FORALL({Pass, Salt, Count},
+                   {binary(), binary(), range(2,20000)},
+                   begin
+                       This = fast_pbkdf2:pbkdf2(Sha, Pass, Salt, Count),
+                       PureErl = erl_pbkdf2:pbkdf2_oneblock(Sha, Pass, Salt, Count),
+                       This =:= PureErl
                    end),
     Opts = [verbose, long_result,
             {start_size, 2}, {max_size, 128},

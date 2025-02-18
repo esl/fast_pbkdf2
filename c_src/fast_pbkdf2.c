@@ -49,16 +49,28 @@ typedef struct {
     ERL_NIF_TERM atom_sha256;
     ERL_NIF_TERM atom_sha384;
     ERL_NIF_TERM atom_sha512;
+    ERL_NIF_TERM atom_sha3_224;
+    ERL_NIF_TERM atom_sha3_256;
+    ERL_NIF_TERM atom_sha3_384;
+    ERL_NIF_TERM atom_sha3_512;
     EVP_MD *MD_NAME(sha1);
     EVP_MD *MD_NAME(sha224);
     EVP_MD *MD_NAME(sha256);
     EVP_MD *MD_NAME(sha384);
     EVP_MD *MD_NAME(sha512);
+    EVP_MD *MD_NAME(sha3_224);
+    EVP_MD *MD_NAME(sha3_256);
+    EVP_MD *MD_NAME(sha3_384);
+    EVP_MD *MD_NAME(sha3_512);
     ErlNifResourceType *HMAC_CTX_ROUND_RES(sha1);
     ErlNifResourceType *HMAC_CTX_ROUND_RES(sha224);
     ErlNifResourceType *HMAC_CTX_ROUND_RES(sha256);
     ErlNifResourceType *HMAC_CTX_ROUND_RES(sha384);
     ErlNifResourceType *HMAC_CTX_ROUND_RES(sha512);
+    ErlNifResourceType *HMAC_CTX_ROUND_RES(sha3_224);
+    ErlNifResourceType *HMAC_CTX_ROUND_RES(sha3_256);
+    ErlNifResourceType *HMAC_CTX_ROUND_RES(sha3_384);
+    ErlNifResourceType *HMAC_CTX_ROUND_RES(sha3_512);
 } pbkdf2_st;
 
 static inline void write32_be(uint32_t n, uint8_t out[4]) {
@@ -341,6 +353,10 @@ typedef struct {
  * SHA-256     | 64                    | 32
  * SHA-384     | 128                   | 48^
  * SHA-512     | 128                   | 64
+ * SHA3-224    | 144                   | 28
+ * SHA3-256    | 136                   | 32
+ * SHA3-384    | 104                   | 48
+ * SHA3-512    | 72                    | 64
  */
 
 /* On the following machine:
@@ -355,6 +371,8 @@ typedef struct {
  * SHA1/3350-iterations       1.04 K      964.86 μs    ±17.04%      911.91 μs     1728.66 μs
  * SHA256/2100-iterations     1.01 K      988.12 μs    ±15.21%      938.68 μs     1669.52 μs
  * SHA512/1600-iterations     1.02 K      983.10 μs    ±15.88%      933.49 μs     1668.32 μs
+ * SHA3_256/1060-iterations   1.04 K      958.75 μs    ±14.25%      918.95 μs     1534.53 μs
+ * SHA3_512/1060-iterations   1.01 K      990.36 μs    ±13.68%      957.71 μs     1547.29 μs
  *
  * Also, we want to report percentage every 5% (TIMESLICE_PERCENTAGE).
  * We therefore get that a slot in between iterations should take MAX/SLICE iterations in a slot.
@@ -365,6 +383,10 @@ DECL_PBKDF2(sha224, SHA256_CBLOCK, SHA224_DIGEST_LENGTH, 2100 / SLICE)
 DECL_PBKDF2(sha256, SHA256_CBLOCK, SHA256_DIGEST_LENGTH, 2100 / SLICE)
 DECL_PBKDF2(sha384, SHA512_CBLOCK, SHA384_DIGEST_LENGTH, 1600 / SLICE)
 DECL_PBKDF2(sha512, SHA512_CBLOCK, SHA512_DIGEST_LENGTH, 1600 / SLICE)
+DECL_PBKDF2(sha3_224, 144, SHA224_DIGEST_LENGTH, 1060 / SLICE)
+DECL_PBKDF2(sha3_256, 136, SHA256_DIGEST_LENGTH, 1060 / SLICE)
+DECL_PBKDF2(sha3_384, 104, SHA384_DIGEST_LENGTH, 1080 / SLICE)
+DECL_PBKDF2(sha3_512, 72, SHA512_DIGEST_LENGTH, 1080 / SLICE)
 
 static int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     (void)load_info;
@@ -386,6 +408,10 @@ static int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     mod_st->atom_sha256 = enif_make_atom(env, "sha256");
     mod_st->atom_sha384 = enif_make_atom(env, "sha384");
     mod_st->atom_sha512 = enif_make_atom(env, "sha512");
+    mod_st->atom_sha3_224 = enif_make_atom(env, "sha3_224");
+    mod_st->atom_sha3_256 = enif_make_atom(env, "sha3_256");
+    mod_st->atom_sha3_384 = enif_make_atom(env, "sha3_384");
+    mod_st->atom_sha3_512 = enif_make_atom(env, "sha3_512");
 
     /* Pre-fetch all the hash functions */
     mod_st->MD_NAME(sha1) = EVP_MD_fetch(NULL, "SHA1", NULL);
@@ -402,6 +428,18 @@ static int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
         goto cleanup;
     mod_st->MD_NAME(sha512) = EVP_MD_fetch(NULL, "SHA512", NULL);
     if (NULL == mod_st->MD_NAME(sha512))
+        goto cleanup;
+    mod_st->MD_NAME(sha3_224) = EVP_MD_fetch(NULL, "SHA3-224", NULL);
+    if (NULL == mod_st->MD_NAME(sha3_224))
+        goto cleanup;
+    mod_st->MD_NAME(sha3_256) = EVP_MD_fetch(NULL, "SHA3-256", NULL);
+    if (NULL == mod_st->MD_NAME(sha3_256))
+        goto cleanup;
+    mod_st->MD_NAME(sha3_384) = EVP_MD_fetch(NULL, "SHA3-384", NULL);
+    if (NULL == mod_st->MD_NAME(sha3_384))
+        goto cleanup;
+    mod_st->MD_NAME(sha3_512) = EVP_MD_fetch(NULL, "SHA3-512", NULL);
+    if (NULL == mod_st->MD_NAME(sha3_512))
         goto cleanup;
 
     mod_st->HMAC_CTX_ROUND_RES(sha1) = enif_open_resource_type(
@@ -429,6 +467,27 @@ static int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha512))
         goto cleanup;
 
+    mod_st->HMAC_CTX_ROUND_RES(sha3_224) =
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_224), NULL,
+                                ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_224))
+        goto cleanup;
+    mod_st->HMAC_CTX_ROUND_RES(sha3_256) =
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_256), NULL,
+                                ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_256))
+        goto cleanup;
+    mod_st->HMAC_CTX_ROUND_RES(sha3_384) =
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_384), NULL,
+                                ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_384))
+        goto cleanup;
+    mod_st->HMAC_CTX_ROUND_RES(sha3_512) =
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_512), NULL,
+                                ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_512))
+        goto cleanup;
+
     *priv_data = (void *)mod_st;
 
     return 0;
@@ -445,6 +504,14 @@ cleanup:
         EVP_MD_free(mod_st->MD_NAME(sha384));
     if (mod_st->MD_NAME(sha512) != NULL)
         EVP_MD_free(mod_st->MD_NAME(sha512));
+    if (mod_st->MD_NAME(sha3_224) != NULL)
+        EVP_MD_free(mod_st->MD_NAME(sha3_224));
+    if (mod_st->MD_NAME(sha3_256) != NULL)
+        EVP_MD_free(mod_st->MD_NAME(sha3_256));
+    if (mod_st->MD_NAME(sha3_384) != NULL)
+        EVP_MD_free(mod_st->MD_NAME(sha3_384));
+    if (mod_st->MD_NAME(sha3_512) != NULL)
+        EVP_MD_free(mod_st->MD_NAME(sha3_512));
     enif_free(mod_st);
     return 1;
 }
@@ -469,6 +536,10 @@ static void unload(ErlNifEnv *env, void *priv) {
     EVP_MD_free(mod_st->MD_NAME(sha256));
     EVP_MD_free(mod_st->MD_NAME(sha384));
     EVP_MD_free(mod_st->MD_NAME(sha512));
+    EVP_MD_free(mod_st->MD_NAME(sha3_224));
+    EVP_MD_free(mod_st->MD_NAME(sha3_256));
+    EVP_MD_free(mod_st->MD_NAME(sha3_384));
+    EVP_MD_free(mod_st->MD_NAME(sha3_512));
     enif_free(priv);
     return;
 }
@@ -514,6 +585,18 @@ static ERL_NIF_TERM pbkdf2_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     } else if (enif_is_identical(argv[0], mod_st->atom_sha512)) {
         return PBKDF2(sha512)(env, password.data, password.size, salt.data, salt.size,
                               iteration_count, counter);
+    } else if (enif_is_identical(argv[0], mod_st->atom_sha3_224)) {
+        return PBKDF2(sha3_224)(env, password.data, password.size, salt.data, salt.size,
+                                iteration_count, counter);
+    } else if (enif_is_identical(argv[0], mod_st->atom_sha3_256)) {
+        return PBKDF2(sha3_256)(env, password.data, password.size, salt.data, salt.size,
+                                iteration_count, counter);
+    } else if (enif_is_identical(argv[0], mod_st->atom_sha3_384)) {
+        return PBKDF2(sha3_384)(env, password.data, password.size, salt.data, salt.size,
+                                iteration_count, counter);
+    } else if (enif_is_identical(argv[0], mod_st->atom_sha3_512)) {
+        return PBKDF2(sha3_512)(env, password.data, password.size, salt.data, salt.size,
+                                iteration_count, counter);
     } else {
         return mk_error(env, "bad_hash");
     }

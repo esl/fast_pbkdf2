@@ -29,7 +29,7 @@ DerivedPassword = fast_pbkdf2:pbkdf2(Hash, Password, Salt, IterationCount)
 ```
 where `Hash` is the underlying hash function chosen as described by
 ```erlang
--type sha_type() :: crypto:sha1() | crypto:sha2().
+-type sha_type() :: crypto:sha1() | crypto:sha2() | crypto:sha3().
 ```
 
 ### Custom `dkLen`
