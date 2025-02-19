@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+
+  Ubuntu:
     name: OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
     strategy:
       fail-fast: false
@@ -20,44 +21,13 @@ jobs:
           - otp: '24'
             rebar3: '3.22.1'
             os: 'ubuntu-22.04'
-          - otp: '27'
-            rebar3: '3.24.0'
-            os: 'windows-2022'
-          - otp: '27'
-            rebar3: '3.24.0'
-            os: 'macos-latest'
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
-
-      # OS setups
-      - name: Ubuntu/Windows – Prepare Erlang
-        uses: erlef/setup-beam@v1
+      - uses: erlef/setup-beam@v1
         with:
           otp-version: ${{matrix.otp}}
           rebar3-version: ${{matrix.rebar3}}
-        if: ${{ matrix.os != 'macos-latest' }}
-      - name: Windows - Enable Developer Command Prompt
-        uses: ilammy/msvc-dev-cmd@v1
-        if: ${{ matrix.os == 'windows-2022' }}
-      - name: Windows - Install openssl
-        shell: pwsh
-        run: |
-          choco install openssl
-          echo "OPENSSL_INSTALL_DIR=""C:\Program Files\OpenSSL""" >> $env:GITHUB_ENV
-        if: ${{ matrix.os == 'windows-2022' }}
-      - name: MacOS – Prepare Brew
-        run: |
-          brew --version
-          brew cleanup --prune=all -s
-          brew autoremove
-          brew untap homebrew/cask homebrew/core
-          brew update
-        if: ${{ matrix.os == 'macos-latest' }}
-      - name: MacOS - Prepare Erlang
-        run: brew install erlang rebar3
-        if: ${{ matrix.os == 'macos-latest' }}
-
       # caches
       - name: Restore _build
         uses: actions/cache@v4
@@ -69,7 +39,6 @@ jobs:
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
-
       # tests
       - run: rebar3 as test get-deps
       - run: rebar3 as test compile
@@ -87,13 +56,51 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  test-on-s390x:
+  MacOS:
+    name: OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['macos-14', 'macos-15']
+        otp: ['27']
+        rebar3: ['3.24.0']
+    runs-on: ${{matrix.os}}
+    steps:
+      - uses: actions/checkout@v4
+      # OS setups
+      - name: Prepare Brew
+        run: |
+          brew --version
+          brew cleanup --prune=all -s
+          brew autoremove
+          brew untap homebrew/cask homebrew/core
+          brew update
+      - run: brew install erlang rebar3
+      # caches
+      - name: Restore _build
+        uses: actions/cache@v4
+        with:
+          path: _build
+          key: _build-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+      - name: Restore rebar3's cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/rebar3
+          key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+      # tests
+      - run: rebar3 as test get-deps
+      - run: >
+          CFLAGS="-I/opt/homebrew/opt/openssl/include"
+          LDFLAGS="-L/opt/homebrew/opt/openssl/lib"
+          rebar3 as test compile
+      - run: rebar3 as test ct
+
+  s390x:
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
     - name: Setup emulator
-      run: |
-        sudo docker run --rm --privileged tonistiigi/binfmt:qemu-v9.2.0
+      run: sudo docker run --rm --privileged tonistiigi/binfmt:qemu-v9.2.0
     - name: Run build
       uses: uraimo/run-on-arch-action@v2.8.1
       with:
@@ -102,10 +109,48 @@ jobs:
         install: |
           apt-get update -y
           DEBIAN_FRONTEND=noninteractive apt-get install -y rebar3 gcc libssl-dev
-        run: |
-          echo "---rebar3 as test get-deps---"
-          rebar3 as test get-deps
-          echo "---rebar3 as test compile---"
-          rebar3 as test compile
-          echo "---rebar3 as test ct---"
-          rebar3 as test ct
+        run: rebar3 as test do get-deps, compile, ct
+
+  # Windows:
+  #   name: OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       os: ['windows-2022']
+  #       otp: ['27']
+  #       rebar3: ['3.24.0']
+  #   runs-on: ${{matrix.os}}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: erlef/setup-beam@v1
+  #       with:
+  #         otp-version: ${{matrix.otp}}
+  #         rebar3-version: ${{matrix.rebar3}}
+  #     - name: Windows - Enable Developer Command Prompt
+  #       uses: ilammy/msvc-dev-cmd@v1
+  #       if: ${{ matrix.os == 'windows-2022' }}
+  #     - name: Windows - Install openssl
+  #       shell: pwsh
+  #       run: |
+  #         choco install openssl
+  #         echo "OPENSSL_INSTALL_DIR=""C:\Program Files\OpenSSL""" >> $env:GITHUB_ENV
+  #       if: ${{ matrix.os == 'windows-2022' }}
+  #     # caches
+  #     - name: Restore _build
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: _build
+  #         key: _build-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+  #     - name: Restore rebar3's cache
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: ~/.cache/rebar3
+  #         key: rebar3-cache-for-os-${{matrix.os}}-otp-${{matrix.otp}}-rebar3-${{matrix.rebar3}}-hash-${{hashFiles('rebar.lock')}}
+  #     # tests
+  #     - run: dir "C:\Program Files\OpenSSL\"
+  #     - run: rebar3 as test get-deps
+  #     - run: >
+  #         set CFLAGS="/I${OPENSSL_INSTALL_DIR}/include" &
+  #         set LDFLAGS="/LIBPATH:${OPENSSL_INSTALL_DIR}/lib" &
+  #         rebar3 as test compile
+  #     - run: rebar3 as test ct
