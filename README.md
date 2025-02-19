@@ -1,11 +1,13 @@
 # Fast PBKDF2
 
-[![Actions Status](https://github.com/esl/fast_pbkdf2/workflows/ci/badge.svg)](https://github.com/esl/fast_pbkdf2/actions)
-[![codecov](https://codecov.io/gh/esl/fast_pbkdf2/branch/main/graph/badge.svg)](https://codecov.io/gh/esl/fast_pbkdf2)
-[![Hex](http://img.shields.io/hexpm/v/fast_pbkdf2.svg)](https://hex.pm/packages/fast_pbkdf2)
+[![Hex pm](https://img.shields.io/hexpm/v/fast_pbkdf2.svg)](https://hex.pm/packages/fast_pbkdf2)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/fast_pbkdf2/)
+[![Downloads](https://img.shields.io/hexpm/dt/fast_pbkdf2.svg)](https://hex.pm/packages/fast_pbkdf2)
+[![GitHub Actions](https://github.com/esl/fast_pbkdf2/workflows/ci/badge.svg?branch=main)](https://github.com/esl/fast_pbkdf2/actions?query=workflow%3Aci+branch%3Amain)
+[![Codecov](https://codecov.io/gh/esl/fast_pbkdf2/branch/main/graph/badge.svg)](https://codecov.io/gh/esl/fast_pbkdf2)
+[![License](https://img.shields.io/hexpm/l/fast_pbkdf2.svg)](https://github.com/esl/fast_pbkdf2/blob/main/LICENSE)
 
 `fast_pbkdf2` is an Erlang implementation of [PBKDF2][PBKDF2], where the algorithm is a carefully-optimised NIF that uses timeslicing and nif scheduling to respect the latency properties of the BEAM.
-All OTP versions from OTP18 have been tested manually and should work correctly, but on CI we support only from 21.3
 
 ## Building
 `fast_pbkdf2` is a rebar3-compatible OTP application, that uses the [port_compiler](https://github.com/blt/port_compiler) for the C part of the code.
@@ -13,8 +15,7 @@ All OTP versions from OTP18 have been tested manually and should work correctly,
 Building is as easy as `rebar3 compile`, and using it in your projects as
 ```erlang
 {deps,
- [{fast_pbkdf2, "1.0.0"}]}.
-{plugins, [pc, rebar3_hex]}.
+ [{fast_pbkdf2, "~> 2.0"}]}.
 {provider_hooks,
  [{pre,
    [{compile, {pc, compile}},
@@ -43,7 +44,7 @@ PBKDF2 is a challenge derivation method, that is, it forces the client to comput
 Is partial. We don't expect to have the fastest implementation, as that would be purely C code on GPUs, so unfortunately an attacker will pretty much always have better chances there. _But_ we can make the computation cheap enough for us that other computations —like the load of a session establishment— will be more relevant than that of the challenge; and also that other defence mechanisms like IP blacklisting or traffic shaping, will fire in good time.
 
 ### The outcome
-On average it's 10x faster on the machines I've tested it (you can compare using the provided module in `./benchmarks/bench.ex`), but while the erlang implementation consumes memory linearly to the iteration count (1M it count with 120 clients quickly allocated 7GB of RAM, and 1M is common for password managers for example), the NIF implementation does not allocate any more memory. Also, the NIFS spend all of their time in user level alone, while the erlang one jumps to system calls in around ~2% of the time (I'd guess due to some heavy allocation and garbage collection patterns).
+On average it's 30% faster than the pure OpenSSL implementation, which `crypto:pbkdf2_hmac/5` calls without yielding, and 10x times faster (and x3N less memory, where N is the iteration count!) than a pure erlang equivalent (you can compare using the provided module in `./benchmarks/bench.ex`).
 
 ## Credit where credit is due
 The initial algorithm and optimisations were taken from Joseph Birr-Pixton's
@@ -51,8 +52,8 @@ The initial algorithm and optimisations were taken from Joseph Birr-Pixton's
 
 ## Read more:
 * Password-Based Cryptography Specification (PBKDF2): [RFC8018](https://tools.ietf.org/html/rfc8018#section-5.2)
-* HMAC: [RFC2104]( https://tools.ietf.org/html/rfc2104)
-* SHAs and HMAC-SHA: [RFC6234](https://tools.ietf.org/html/rfc6234)
+* HMAC: [RFC2104](https://datatracker.ietf.org/doc/html/rfc2104)
+* SHAs and HMAC-SHA: [RFC6234](https://datatracker.ietf.org/doc/html/rfc6234)
 
 [MIM]: https://github.com/esl/MongooseIM
 [PBKDF2]: https://tools.ietf.org/html/rfc8018#section-5.2
