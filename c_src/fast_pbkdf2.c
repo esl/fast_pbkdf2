@@ -213,7 +213,7 @@ typedef struct {
         HMAC_CTX_ROUND(_name) *const restrict round_st;                                            \
         if (!enif_get_resource(env, argv[0], mod_st->HMAC_CTX_ROUND_RES(_name),                    \
                                (void *)(&round_st))) {                                             \
-            return mk_error(env, "bad_resource");                                                  \
+            return enif_make_badarg(env);                                                          \
         }                                                                                          \
                                                                                                    \
         while (1) {                                                                                \
