@@ -15,12 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         os: ['ubuntu-24.04']
-        otp: ['27', '26', '25']
-        rebar3: ['3.24.0']
-        include:
-          - otp: '24'
-            rebar3: '3.22.1'
-            os: 'ubuntu-22.04'
+        otp: ['28', '27', '26']
+        rebar3: ['3.25.0']
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
@@ -44,14 +40,14 @@ jobs:
       - run: rebar3 as test compile
       - run: rebar3 as test ct
       - run: rebar3 dialyzer
-        if: ${{ matrix.otp == '27' && matrix.os == 'ubuntu-24.04' }}
+        if: ${{ matrix.otp == '28' && matrix.os == 'ubuntu-24.04' }}
       - name: Run coverage
-        if: ${{ matrix.otp == '27' && matrix.os == 'ubuntu-24.04' }}
+        if: ${{ matrix.otp == '28' && matrix.os == 'ubuntu-24.04' }}
         run: |
           rebar3 as test codecov analyze
           gcov -o c_src fast_pbkdf2
       - name: Upload coverage reports to Codecov
-        if: ${{ matrix.otp == '27' && matrix.os == 'ubuntu-24.04' }}
+        if: ${{ matrix.otp == '28' && matrix.os == 'ubuntu-24.04' }}
         uses: codecov/codecov-action@v4
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -62,8 +58,8 @@ jobs:
       fail-fast: false
       matrix:
         os: ['macos-14', 'macos-15']
-        otp: ['27']
-        rebar3: ['3.24.0']
+        otp: ['28', '27']
+        rebar3: ['3.25.0']
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
