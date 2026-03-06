@@ -46,6 +46,13 @@ Is partial. We don't expect to have the fastest implementation, as that would be
 ### The outcome
 On average it's 30% faster than the pure OpenSSL implementation, which `crypto:pbkdf2_hmac/5` calls without yielding, and 10x times faster (and x3N less memory, where N is the iteration count!) than a pure erlang equivalent (you can compare using the provided module in `./benchmarks/bench.ex`).
 
+## Releasing to Hex.pm
+Creating a GitHub release (non-draft, non-prerelease) automatically publishes the package to [Hex.pm](https://hex.pm/) via the **Publish to Hex** workflow.
+This workflow can also be triggered manually from the Actions tab — make sure to run it from the specific tag you want to publish.
+
+To revert a published version, run the **Revert published version from Hex** workflow from the Actions tab, providing the version to revert.
+Hex.pm only allows reverting within 1 hour of publishing — after that, the version can only be *retired*.
+
 ## Credit where credit is due
 The initial algorithm and optimisations were taken from Joseph Birr-Pixton's
 [fastpbkdf2](https://github.com/ctz/fastpbkdf2)'s repository.
