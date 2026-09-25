@@ -266,7 +266,7 @@ typedef struct {
         unsigned char *output = enif_make_new_binary(env, _hashsz, &erl_result);                   \
         if (output == NULL) {                                                                      \
             CLEANUP(_name)(round_st);                                                              \
-            return enif_make_badarg(env);                                                          \
+            return mk_error(env, "alloc_failed");                                                  \
         }                                                                                          \
         memcpy(output, &round_st->result, _hashsz);                                                \
         /* We are done, free the contexts without waiting for the GC */                            \
@@ -275,7 +275,7 @@ typedef struct {
                                                                                                    \
     error:                                                                                         \
         CLEANUP(_name)(round_st);                                                                  \
-        return enif_make_badarg(env);                                                              \
+        return mk_error(env, "digest_failed");                                                     \
     }                                                                                              \
                                                                                                    \
     /* Initialises the first iteration and prepares the state for PBKDF2_F_MD */                   \
@@ -573,16 +573,17 @@ static ERL_NIF_TERM pbkdf2_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     if (!enif_inspect_binary(env, argv[2], &salt))
         return mk_error(env, "bad_salt");
 
-    int iteration_count;
-    if (!enif_get_int(env, argv[3], &iteration_count))
+    /* RFC 8018 encodes the block counter in 32 bits, and we keep the iteration count in 32 bits */
+    unsigned int iteration_count;
+    if (!enif_get_uint(env, argv[3], &iteration_count))
         return mk_error(env, "bad_iteration_count");
-    if (iteration_count <= 0)
+    if (iteration_count == 0)
         return mk_error(env, "bad_iteration_count");
 
-    int counter;
-    if (!enif_get_int(env, argv[4], &counter))
+    unsigned int counter;
+    if (!enif_get_uint(env, argv[4], &counter))
         return mk_error(env, "bad_block_counter");
-    if (counter <= 0)
+    if (counter == 0)
         return mk_error(env, "bad_block_counter");
 
     pbkdf2_st *mod_st = (pbkdf2_st *)enif_priv_data(env);
