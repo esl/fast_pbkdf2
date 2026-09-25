@@ -111,15 +111,14 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
-      # OS setups
-      - name: Prepare Brew
-        run: |
-          brew --version
-          brew cleanup --prune=all -s
-          brew autoremove
-          brew untap homebrew/cask homebrew/core
-          brew update
-      - run: brew install erlang rebar3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+          rebar3-version: ${{matrix.rebar3}}
+      # The NIF is built against Homebrew's OpenSSL
+      - run: brew install openssl@3
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
       # caches
       - name: Restore _build
         uses: actions/cache@v4
