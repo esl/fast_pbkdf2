@@ -35,6 +35,9 @@
          test_vector_sha256_5/1,
          test_vector_sha256_6/1
         ]).
+-export([
+         killed_callers_do_not_leak/1
+        ]).
 
 -include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -42,7 +45,8 @@
 all() ->
     [
      {group, equivalents},
-     {group, test_vectors}
+     {group, test_vectors},
+     {group, resources}
     ].
 
 groups() ->
@@ -72,6 +76,10 @@ groups() ->
        test_vector_sha256_4,
        test_vector_sha256_5,
        test_vector_sha256_6
+      ]},
+     {resources, [],
+      [
+       killed_callers_do_not_leak
       ]}
     ].
 
@@ -220,3 +228,42 @@ test_vector_sha256_6(_Config) ->
     {P,S,It,DkLen,Result} = {<<"pass\0word">>, <<"sa\0lt">>, 4096, 16,
      base16:decode(<<"89b69d0516f829893c696226650a8687">>)},
     ?assertEqual(Result, fast_pbkdf2:pbkdf2(sha256, P, S, It, DkLen)).
+
+
+%% A process killed while the NIF is yielding must not leak the state of its computation.
+%% Every leaked computation holds a few hundred bytes, so a leak across all these kills
+%% is well above the noise of the node's binary memory.
+killed_callers_do_not_leak(_Config) ->
+    Hashes = [sha, sha224, sha256, sha384, sha512, sha3_224, sha3_256, sha3_384, sha3_512],
+    Before = settled_binary_memory(),
+    [kill_mid_computation(Hash) || Hash <- Hashes, _ <- lists:seq(1, 200)],
+    assert_binary_memory_settles(Before, 10).
+
+kill_mid_computation(Hash) ->
+    {Pid, Ref} = spawn_monitor(
+                   fun() -> fast_pbkdf2:pbkdf2(Hash, <<"password">>, <<"salt">>, 1 bsl 30) end),
+    wait_until_yielded(Pid),
+    exit(Pid, kill),
+    receive {'DOWN', Ref, process, Pid, killed} -> ok end.
+
+%% Once the NIF has rescheduled itself, the process reports one of the scheduled functions,
+%% which are the only functions of arity 1 in the module.
+wait_until_yielded(Pid) ->
+    case erlang:process_info(Pid, current_function) of
+        {current_function, {fast_pbkdf2, _, 1}} -> ok;
+        {current_function, _} -> erlang:yield(), wait_until_yielded(Pid);
+        undefined -> ct:fail({exited_before_yielding, Pid})
+    end.
+
+assert_binary_memory_settles(Before, Retries) ->
+    After = settled_binary_memory(),
+    case After - Before < 64 * 1024 of
+        true -> ct:pal("Binary memory before ~p, after ~p", [Before, After]);
+        false when Retries > 0 -> assert_binary_memory_settles(Before, Retries - 1);
+        false -> ct:fail({binary_memory_grew, Before, After})
+    end.
+
+settled_binary_memory() ->
+    [erlang:garbage_collect(Pid) || Pid <- processes()],
+    timer:sleep(100),
+    erlang:memory(binary).
