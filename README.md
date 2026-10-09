@@ -33,7 +33,7 @@ where `Hash` is the underlying hash function chosen as described by
 ```
 
 ### Custom `dkLen`
-If what you desire is PBKDF2 with custom `dkLen`(I assume that if that is what you want, then you know your RFC), in a way that allows you to request longer derived keys, you may use `fast_pbkdf2:pbkdf2_block/5` with a given block index and do the indexing and chunking yourself, or use `fast_pbkdf2:pbkdf2/5` for the full algorithm. However, it doesn't really add much more entropy to the derived key to use outputs larger than the output of the underlying hash, so you might as well, use `pbkdf2` where dkLen is that of the hash's output, which is the same than `pbkdf2_block` with index `1`, which is simply the `pbkdf2/4` function.
+If what you desire is PBKDF2 with custom `dkLen`(I assume that if that is what you want, then you know your RFC), in a way that allows you to request longer derived keys, you may use `fast_pbkdf2:pbkdf2/5` for the full algorithm. However, it doesn't really add much more entropy to the derived key to use outputs larger than the output of the underlying hash, so you might as well use `fast_pbkdf2:pbkdf2/4`, where dkLen is that of the hash's output.
 
 ## Performance
 

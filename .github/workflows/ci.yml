@@ -52,6 +52,54 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  Sanitizers:
+    name: Sanitizers / OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['ubuntu-26.04']
+        otp: ['29']
+        rebar3: ['3.27']
+    runs-on: ${{matrix.os}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+          rebar3-version: ${{matrix.rebar3}}
+      # Older ASan runtimes can randomly crash on startup with the high mmap ASLR entropy of
+      # recent kernels, and the image ships older GCC versions too
+      - run: sudo sysctl vm.mmap_rnd_bits=28
+      - run: rebar3 as test get-deps
+      - run: rebar3 as test compile
+        env:
+          CFLAGS: -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+          LDFLAGS: -fsanitize=address,undefined
+      # The BEAM is not instrumented, so the sanitizer runtimes are preloaded into it. They also
+      # get preloaded into every helper program started by rebar3 and the BEAM (cp, inet_gethost,
+      # ...), which leak by design, so leak detection is left to the next step.
+      - name: Run tests under ASan and UBSan
+        run: |
+          export LD_PRELOAD="$(gcc -print-file-name=libasan.so) $(gcc -print-file-name=libubsan.so)"
+          rebar3 as test ct
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+      # Leaks don't change exit codes here, instead the step fails on any report involving the NIF
+      - name: Check for leaks with LSan
+        run: |
+          mkdir -p "$SANITIZER_LOGS"
+          export LD_PRELOAD="$(gcc -print-file-name=libasan.so) $(gcc -print-file-name=libubsan.so)"
+          rebar3 as test ct
+          unset LD_PRELOAD
+          if grep -ls fast_pbkdf2 "$SANITIZER_LOGS"/*; then
+            grep -ls fast_pbkdf2 "$SANITIZER_LOGS"/* | xargs head -n 60
+            exit 1
+          fi
+        env:
+          SANITIZER_LOGS: ${{ runner.temp }}/sanitizer-logs
+          ASAN_OPTIONS: detect_leaks=1:exitcode=0:log_path=${{ runner.temp }}/sanitizer-logs/report
+
   MacOS:
     name: OTP ${{matrix.otp}} / rebar3 ${{matrix.rebar3}} / OS ${{matrix.os}}
     strategy:
@@ -63,15 +111,14 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v4
-      # OS setups
-      - name: Prepare Brew
-        run: |
-          brew --version
-          brew cleanup --prune=all -s
-          brew autoremove
-          brew untap homebrew/cask homebrew/core
-          brew update
-      - run: brew install erlang rebar3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+          rebar3-version: ${{matrix.rebar3}}
+      # The NIF is built against Homebrew's OpenSSL
+      - run: brew install openssl@3
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
       # caches
       - name: Restore _build
         uses: actions/cache@v4

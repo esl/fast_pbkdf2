@@ -21,6 +21,7 @@
 #if defined(__GNUC__)
 #include <sys/types.h>
 #endif
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 
@@ -38,6 +39,7 @@
 #define MD_NAME(_name) md_##_name
 #define HMAC_INIT(_name) HMAC_##_name##_init
 #define CLEANUP(_name) cleanup_rount_st_##_name // C struct
+#define DTOR(_name) dtor_round_st_##_name       // Erlang Resource destructor
 
 #define PBKDF2_F_MD(_name) pbkdf2_f_md##_name
 #define PBKDF2_F(_name) pbkdf2_f_##_name
@@ -73,15 +75,12 @@ typedef struct {
     ErlNifResourceType *HMAC_CTX_ROUND_RES(sha3_512);
 } pbkdf2_st;
 
+/* Compilers turn this into a single byte swap and store where available */
 static inline void write32_be(uint32_t n, uint8_t out[4]) {
-#if defined(__GNUC__) && __GNUC__ >= 4 && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    *(uint32_t *)(out) = __builtin_bswap32(n);
-#else
     out[0] = (n >> 24) & 0xff;
     out[1] = (n >> 16) & 0xff;
     out[2] = (n >> 8) & 0xff;
     out[3] = n & 0xff;
-#endif
 }
 
 /* Prepare block (of blocksz bytes) to contain md padding denoting a msg-size
@@ -94,7 +93,7 @@ static inline void md_pad(uint8_t *block, size_t blocksz, size_t used, size_t ms
     write32_be((uint32_t)(msg * 8), block);
 }
 
-ERL_NIF_TERM mk_error(ErlNifEnv *env, const char *error_msg) {
+static ERL_NIF_TERM mk_error(ErlNifEnv *env, const char *error_msg) {
     return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_atom(env, error_msg));
 }
 
@@ -114,6 +113,7 @@ typedef struct {
  * This macro generates the following functions:
  * - HMAC_CTX_ROUND(_name) - C struct to store the state of the iterations
  * - CLEANUP(_name): for example cleanup_round_st_sha256
+ * - DTOR(_name) - Erlang resource destructor, calls CLEANUP(_name)
  * - HMAC_INIT(_name) - C function to initialize the HMAC_CTX_ROUND(_name)
  * - PBKDF2_F_MD(_name) - Erlang function to iterate over the HMAC_CTX_ROUND(_name)
  * - PBKDF2_F(_name) - C function to iterate over the HMAC_CTX_ROUND(_name)
@@ -130,7 +130,8 @@ typedef struct {
         uint32_t iterations;      /* Carry the number of iterations left */                        \
     } HMAC_CTX_ROUND(_name);                                                                       \
                                                                                                    \
-    /* Free the EVP_MD_CTX and nif resource allocated previously, if any */                        \
+    /* Free the EVP_MD_CTX allocated previously, if any, and wipe the intermediate results. */     \
+    /* Safe to call more than once. */                                                             \
     static void CLEANUP(_name)(HMAC_CTX_ROUND(_name) *const restrict round_st) {                   \
         if (round_st->ctx.inner)                                                                   \
             EVP_MD_CTX_free(round_st->ctx.inner);                                                  \
@@ -140,7 +141,19 @@ typedef struct {
             EVP_MD_CTX_free(round_st->startctx.inner);                                             \
         if (round_st->startctx.outer)                                                              \
             EVP_MD_CTX_free(round_st->startctx.outer);                                             \
-        enif_release_resource(round_st);                                                           \
+        round_st->ctx.inner = NULL;                                                                \
+        round_st->ctx.outer = NULL;                                                                \
+        round_st->startctx.inner = NULL;                                                           \
+        round_st->startctx.outer = NULL;                                                           \
+        OPENSSL_cleanse(round_st->result, sizeof(round_st->result));                               \
+        OPENSSL_cleanse(round_st->Ublock, sizeof(round_st->Ublock));                               \
+    }                                                                                              \
+                                                                                                   \
+    /* Runs when the resource term is garbage collected, which is the only way to free */          \
+    /* the state of a computation whose calling process was killed while the NIF yielded */        \
+    static void DTOR(_name)(ErlNifEnv * env, void *obj) {                                          \
+        (void)env;                                                                                 \
+        CLEANUP(_name)((HMAC_CTX_ROUND(_name) *)obj);                                              \
     }                                                                                              \
                                                                                                    \
     /* Initialise the startctx parts (the `2` in the `2+2i` optimisation) */                       \
@@ -150,19 +163,22 @@ typedef struct {
     static inline int HMAC_INIT(_name)(HMAC_CTX_ROUND(_name) *restrict round_st,                   \
                                        const EVP_MD *restrict type, const uint8_t *restrict key,   \
                                        size_t nkey) {                                              \
-        /* Prepare key: */                                                                         \
+        /* Prepare key, all buffers derived from it are wiped on exit: */                          \
         uint8_t k[_blocksz];                                                                       \
+        uint8_t blk_inner[_blocksz];                                                               \
+        uint8_t blk_outer[_blocksz];                                                               \
+        int ret = 1;                                                                               \
                                                                                                    \
         /* Shorten long keys */                                                                    \
         if (nkey > _blocksz) {                                                                     \
             round_st->startctx.inner = EVP_MD_CTX_new();                                           \
             if (!round_st->startctx.inner) {                                                       \
-                return 1;                                                                          \
+                goto out;                                                                          \
             }                                                                                      \
             if (!EVP_DigestInit_ex2(round_st->startctx.inner, type, NULL) ||                       \
                 !EVP_DigestUpdate(round_st->startctx.inner, key, nkey) ||                          \
                 !EVP_DigestFinal_ex(round_st->startctx.inner, k, NULL)) {                          \
-                return 1;                                                                          \
+                goto out;                                                                          \
             }                                                                                      \
             EVP_MD_CTX_free(round_st->startctx.inner);                                             \
             round_st->startctx.inner = NULL;                                                       \
@@ -180,9 +196,6 @@ typedef struct {
             memset(k + nkey, 0, _blocksz - nkey);                                                  \
                                                                                                    \
         /* Start inner hash computation */                                                         \
-        uint8_t blk_inner[_blocksz];                                                               \
-        uint8_t blk_outer[_blocksz];                                                               \
-                                                                                                   \
         for (uint_fast8_t i = 0; i < _blocksz; i++) {                                              \
             blk_inner[i] = 0x36 ^ k[i];                                                            \
             blk_outer[i] = 0x5c ^ k[i];                                                            \
@@ -192,23 +205,30 @@ typedef struct {
         if (!round_st->startctx.inner ||                                                           \
             !EVP_DigestInit_ex2(round_st->startctx.inner, type, NULL) ||                           \
             !EVP_DigestUpdate(round_st->startctx.inner, blk_inner, sizeof blk_inner))              \
-            return 1;                                                                              \
+            goto out;                                                                              \
                                                                                                    \
         /* And outer */                                                                            \
         round_st->startctx.outer = EVP_MD_CTX_new();                                               \
         if (!round_st->startctx.outer ||                                                           \
             !EVP_DigestInit_ex2(round_st->startctx.outer, type, NULL) ||                           \
             !EVP_DigestUpdate(round_st->startctx.outer, blk_outer, sizeof blk_outer))              \
-            return 1;                                                                              \
+            goto out;                                                                              \
                                                                                                    \
-        return 0;                                                                                  \
+        ret = 0;                                                                                   \
+                                                                                                   \
+    out:                                                                                           \
+        OPENSSL_cleanse(k, sizeof k);                                                              \
+        OPENSSL_cleanse(blk_inner, sizeof blk_inner);                                              \
+        OPENSSL_cleanse(blk_outer, sizeof blk_outer);                                              \
+        return ret;                                                                                \
     }                                                                                              \
                                                                                                    \
     /* Run the actual iterations, possibly yielding the NIF or finally returning the result */     \
     /* - It iterates over the number of iterations, updating the context and XORing the results */ \
     /* - If the iterations exceed a certain threshold, it schedules the function to run again */   \
     /* - The final result is copied to the output buffer and returned */                           \
-    ERL_NIF_TERM PBKDF2_F_MD(_name)(ErlNifEnv * env, const int argc, const ERL_NIF_TERM argv[]) {  \
+    static ERL_NIF_TERM PBKDF2_F_MD(_name)(ErlNifEnv * env, const int argc,                        \
+                                           const ERL_NIF_TERM argv[]) {                            \
         const pbkdf2_st *const mod_st = enif_priv_data(env);                                       \
         HMAC_CTX_ROUND(_name) *restrict round_st;                                            \
         if (!enif_get_resource(env, argv[0], mod_st->HMAC_CTX_ROUND_RES(_name),                    \
@@ -254,24 +274,25 @@ typedef struct {
         unsigned char *output = enif_make_new_binary(env, _hashsz, &erl_result);                   \
         if (output == NULL) {                                                                      \
             CLEANUP(_name)(round_st);                                                              \
-            return enif_make_badarg(env);                                                          \
+            return mk_error(env, "alloc_failed");                                                  \
         }                                                                                          \
         memcpy(output, &round_st->result, _hashsz);                                                \
-        /* We're done, so we can release the resource */                                           \
+        /* We are done, free the contexts without waiting for the GC */                            \
         CLEANUP(_name)(round_st);                                                                  \
         return erl_result;                                                                         \
                                                                                                    \
     error:                                                                                         \
         CLEANUP(_name)(round_st);                                                                  \
-        return enif_make_badarg(env);                                                              \
+        return mk_error(env, "digest_failed");                                                     \
     }                                                                                              \
                                                                                                    \
     /* Initialises the first iteration and prepares the state for PBKDF2_F_MD */                   \
-    /* allocates the resource for the HMAC context and calls `PBKDF2_F_sha1` */                    \
+    /* and calls PBKDF2_F_MD with the resource term that owns the state */                         \
     static inline ERL_NIF_TERM PBKDF2_F(_name)(                                                    \
-        ErlNifEnv * env, HMAC_CTX_ROUND(_name) *const restrict round_st,                           \
-        const EVP_MD *const restrict type, const uint8_t *const restrict pw, const size_t npw,     \
-        const uint8_t *const restrict salt, const size_t nsalt, const uint32_t counter) {          \
+        ErlNifEnv * env, const ERL_NIF_TERM state_term,                                            \
+        HMAC_CTX_ROUND(_name) *const restrict round_st, const EVP_MD *const restrict type,         \
+        const uint8_t *const restrict pw, const size_t npw, const uint8_t *const restrict salt,    \
+        const size_t nsalt, const uint32_t counter) {                                              \
         if (HMAC_INIT(_name)(round_st, type, pw, npw) != 0) {                                      \
             CLEANUP(_name)(round_st);                                                              \
             return mk_error(env, "hmac_init_failed");                                              \
@@ -324,7 +345,6 @@ typedef struct {
         /* We have ran one iteration already */                                                    \
         --(round_st->iterations);                                                                  \
         memcpy(round_st->result, round_st->Ublock, _hashsz);                                       \
-        ERL_NIF_TERM state_term = enif_make_resource(env, round_st);                               \
         const ERL_NIF_TERM tmp_argv[] = {state_term};                                              \
         return PBKDF2_F_MD(_name)(env, 1, tmp_argv);                                               \
     }                                                                                              \
@@ -345,7 +365,11 @@ typedef struct {
         round_st->startctx.inner = NULL;                                                           \
         round_st->startctx.outer = NULL;                                                           \
         round_st->iterations = iterations;                                                         \
-        return PBKDF2_F(_name)(env, round_st, type, pw, npw, salt, nsalt, counter);                \
+        /* Hand our reference over to the term, so that the resource is destroyed when the term */ \
+        /* is garbage collected, including when the calling process dies while the NIF yields */   \
+        const ERL_NIF_TERM state_term = enif_make_resource(env, round_st);                         \
+        enif_release_resource(round_st);                                                           \
+        return PBKDF2_F(_name)(env, state_term, round_st, type, pw, npw, salt, nsalt, counter);    \
     }
 
 /* Hash method |  Blocksize (in bytes) |  Hash length (in bytes)
@@ -442,48 +466,49 @@ static int load(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info) {
     if (NULL == mod_st->MD_NAME(sha3_512))
         goto cleanup;
 
-    mod_st->HMAC_CTX_ROUND_RES(sha1) = enif_open_resource_type(
-        env, NULL, HMAC_CTX_ROUND_NAME(sha1), NULL, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
+    mod_st->HMAC_CTX_ROUND_RES(sha1) =
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha1), DTOR(sha1),
+                                ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha1))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha224) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha224), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha224), DTOR(sha224),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha224))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha256) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha256), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha256), DTOR(sha256),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha256))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha384) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha384), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha384), DTOR(sha384),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha384))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha512) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha512), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha512), DTOR(sha512),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha512))
         goto cleanup;
 
     mod_st->HMAC_CTX_ROUND_RES(sha3_224) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_224), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_224), DTOR(sha3_224),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_224))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha3_256) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_256), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_256), DTOR(sha3_256),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_256))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha3_384) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_384), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_384), DTOR(sha3_384),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_384))
         goto cleanup;
     mod_st->HMAC_CTX_ROUND_RES(sha3_512) =
-        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_512), NULL,
+        enif_open_resource_type(env, NULL, HMAC_CTX_ROUND_NAME(sha3_512), DTOR(sha3_512),
                                 ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (NULL == mod_st->HMAC_CTX_ROUND_RES(sha3_512))
         goto cleanup;
@@ -556,16 +581,17 @@ static ERL_NIF_TERM pbkdf2_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     if (!enif_inspect_binary(env, argv[2], &salt))
         return mk_error(env, "bad_salt");
 
-    int iteration_count;
-    if (!enif_get_int(env, argv[3], &iteration_count))
+    /* RFC 8018 encodes the block counter in 32 bits, and we keep the iteration count in 32 bits */
+    unsigned int iteration_count;
+    if (!enif_get_uint(env, argv[3], &iteration_count))
         return mk_error(env, "bad_iteration_count");
-    if (iteration_count <= 0)
+    if (iteration_count == 0)
         return mk_error(env, "bad_iteration_count");
 
-    int counter;
-    if (!enif_get_int(env, argv[4], &counter))
+    unsigned int counter;
+    if (!enif_get_uint(env, argv[4], &counter))
         return mk_error(env, "bad_block_counter");
-    if (counter <= 0)
+    if (counter == 0)
         return mk_error(env, "bad_block_counter");
 
     pbkdf2_st *mod_st = (pbkdf2_st *)enif_priv_data(env);

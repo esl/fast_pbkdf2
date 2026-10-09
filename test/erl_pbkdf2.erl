@@ -1,17 +1,28 @@
 -module(erl_pbkdf2).
 
--export([pbkdf2_oneblock/4]).
+-export([pbkdf2/5, pbkdf2_oneblock/4]).
 
 %% Taken from unexported crypto:sha3().
 -type sha3() :: sha3_224 | sha3_256 | sha3_384 | sha3_512.
 -type sha_type() :: crypto:sha1() | crypto:sha2() | sha3().
 
--spec pbkdf2_oneblock(sha_type(), binary(), binary(), non_neg_integer()) -> binary().
-pbkdf2_oneblock(Sha, Password, Salt, 1) ->
-    crypto_hmac(Sha, Password, <<Salt/binary, 0, 0, 0, 1>>);
-pbkdf2_oneblock(Sha, Password, Salt, IterationCount)
+-spec pbkdf2(sha_type(), binary(), binary(), pos_integer(), pos_integer()) -> binary().
+pbkdf2(Sha, Password, Salt, IterationCount, DkLen) ->
+    #{size := HLen} = crypto:hash_info(Sha),
+    Blocks = [pbkdf2_block(Sha, Password, Salt, IterationCount, BlockIndex)
+              || BlockIndex <- lists:seq(1, (DkLen + HLen - 1) div HLen)],
+    binary:part(iolist_to_binary(Blocks), 0, DkLen).
+
+-spec pbkdf2_oneblock(sha_type(), binary(), binary(), pos_integer()) -> binary().
+pbkdf2_oneblock(Sha, Password, Salt, IterationCount) ->
+    pbkdf2_block(Sha, Password, Salt, IterationCount, 1).
+
+-spec pbkdf2_block(sha_type(), binary(), binary(), pos_integer(), pos_integer()) -> binary().
+pbkdf2_block(Sha, Password, Salt, 1, BlockIndex) ->
+    crypto_hmac(Sha, Password, <<Salt/binary, BlockIndex:32>>);
+pbkdf2_block(Sha, Password, Salt, IterationCount, BlockIndex)
   when is_integer(IterationCount), IterationCount > 1 ->
-    U1 = crypto_hmac(Sha, Password, <<Salt/binary, 0, 0, 0, 1>>),
+    U1 = crypto_hmac(Sha, Password, <<Salt/binary, BlockIndex:32>>),
     mask(U1, iteration(Sha, Password, U1, IterationCount - 1)).
 
 -spec iteration(sha_type(), binary(), binary(), non_neg_integer()) -> binary().

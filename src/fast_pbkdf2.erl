@@ -8,19 +8,33 @@
 
 -export([pbkdf2/4, pbkdf2/5]).
 
+%% The block index is encoded in 32 bits, see RFC 8018, section 5.2.
+-define(MAX_BLOCK_INDEX, 16#FFFFFFFF).
+
 %%% @doc
 %%% This function calculates the pbkdf2 algorithm where dkLen is simply assumed to be that
 %%% of the underlying hash function, a sane default.
--spec pbkdf2(sha_type(), binary(), binary(), non_neg_integer()) -> binary() | {error, atom()}.
+-spec pbkdf2(sha_type(), binary(), binary(), pos_integer()) -> binary() | {error, atom()}.
 pbkdf2(Hash, Password, Salt, IterationCount) ->
     pbkdf2_block(Hash, Password, Salt, IterationCount, 1).
 
 %%% @doc
 %%% This function allows to customise the desired dkLen parameter for pbkdf2.
--spec pbkdf2(sha_type(), binary(), binary(), non_neg_integer(), non_neg_integer()) ->
+%%% As in RFC 8018, it returns `{error, derived_key_too_long}' when dkLen exceeds
+%%% (2^32 - 1) * hLen, where hLen is the output length of the hash function.
+-spec pbkdf2(sha_type(), binary(), binary(), pos_integer(), pos_integer()) ->
     binary() | {error, atom()}.
-pbkdf2(Hash, Password, Salt, IterationCount, DkLen) ->
-    pbkdf2(Hash, Password, Salt, IterationCount, DkLen, 1, [], 0).
+pbkdf2(Hash, Password, Salt, IterationCount, DkLen) when is_integer(DkLen), DkLen > 0 ->
+    case hash_length(Hash) of
+        undefined ->
+            {error, bad_hash};
+        HLen when DkLen > ?MAX_BLOCK_INDEX * HLen ->
+            {error, derived_key_too_long};
+        _ ->
+            pbkdf2(Hash, Password, Salt, IterationCount, DkLen, 1, [], 0)
+    end;
+pbkdf2(_Hash, _Password, _Salt, _IterationCount, _DkLen) ->
+    {error, bad_derived_key_length}.
 
 %%%===================================================================
 %%% Helper function
@@ -37,12 +51,24 @@ pbkdf2(Hash, Password, Salt, IterationCount, DkLen, BlockIndex, Acc, Len) ->
                    byte_size(Block) + Len)
     end.
 
+-spec hash_length(sha_type()) -> pos_integer() | undefined.
+hash_length(sha) -> 20;
+hash_length(sha224) -> 28;
+hash_length(sha256) -> 32;
+hash_length(sha384) -> 48;
+hash_length(sha512) -> 64;
+hash_length(sha3_224) -> 28;
+hash_length(sha3_256) -> 32;
+hash_length(sha3_384) -> 48;
+hash_length(sha3_512) -> 64;
+hash_length(_) -> undefined.
+
 %%%===================================================================
 %%% NIF
 %%%===================================================================
--spec pbkdf2_block(sha_type(), binary(), binary(), non_neg_integer(), non_neg_integer()) ->
+-spec pbkdf2_block(sha_type(), binary(), binary(), pos_integer(), pos_integer()) ->
     binary() | {error, atom()}.
-pbkdf2_block(_Hash, _Password, _Salt, _IterationCount, _BlockSize) ->
+pbkdf2_block(_Hash, _Password, _Salt, _IterationCount, _BlockIndex) ->
     erlang:nif_error(not_loaded).
 
 -spec load() -> any().
